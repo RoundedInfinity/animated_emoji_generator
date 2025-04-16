@@ -1,59 +1,88 @@
-import 'package:dart_animated_emoji/generated/emoji_list.g.dart';
-import 'package:dart_style/dart_style.dart';
-import 'package:recase/recase.dart';
+import 'package:animated_emoji_generator/data.dart';
+import 'package:animated_emoji_generator/emoji.dart';
 
-extension EmojiName on AnimatedEmoji {
-  String get commonName {
-    final tag = tags.first;
+class AnimatedEmojiDataGenerator {
+  List<AnimatedEmojiData> generateEmojiData(EmojiApiData data) {
+    // Group emojis by their common name
+    final groupedEmojis = <String, List<IconData>>{};
 
-    // Handle edge cases.
-    if (tag == '100') {
-      return 'oneHundred';
+    for (final emoji in data.icons) {
+      final commonName = emoji.commonName;
+      groupedEmojis.putIfAbsent(commonName, () => []).add(emoji);
     }
-    if (tag == 'piñata') {
-      return 'pinata';
+
+    final emojiData = <AnimatedEmojiData>[];
+
+    for (final entry in groupedEmojis.entries) {
+      final icons = entry.value;
+      final baseIcon = icons.first;
+
+      // If there's only one icon, create a regular AnimatedEmojiData
+      if (icons.length == 1) {
+        emojiData.add(AnimatedEmojiData(
+          baseIcon.codepoint,
+          name: baseIcon.commonName,
+          categories: baseIcon.categories,
+          tags: baseIcon.tags,
+        ));
+        continue;
+      }
+
+      // If there are multiple icons, create an AnimatedTonedEmojiData
+      emojiData.add(AnimatedTonedEmojiData(
+        baseIcon.codepoint,
+        name: baseIcon.commonName,
+        baseId: baseIcon.codepoint.split('_').first,
+        categories: baseIcon.categories,
+        tags: baseIcon.tags,
+      ));
     }
-    if (tag == 'up!') {
-      return 'upSymbol';
-    }
-    if (tag == 'new') {
-      return 'newSymbol';
-    }
-    return tag.camelCase;
+
+    return emojiData;
   }
 
-  String get fileName {
-    final name = commonName;
-    String variant = '';
+  String generateCode(List<AnimatedEmojiData> emojis) {
+    final content = <String>[];
 
-    if (codepoint.contains('_')) {
-      final skinVariation = codepoint.split('_').last;
-      if (skinVariation == '1f3fb') {
-        variant = 'Light';
-      }
-      if (skinVariation == '1f3fc') {
-        variant = 'MediumLight';
-      }
-      if (skinVariation == '1f3fd') {
-        variant = 'Medium';
-      }
-      if (skinVariation == '1f3fe') {
-        variant = 'MediumDark';
-      }
-      if (skinVariation == '1f3ff') {
-        variant = 'Dark';
+    for (final emoji in emojis) {
+      if (emoji is AnimatedTonedEmojiData) {
+        content.add(_Templates.generateTonedEmoji(emoji));
+      } else {
+        content.add(_Templates.generateRegularEmoji(emoji));
       }
     }
-    return '$name$variant';
+
+    content.add(_Templates.generateValues(emojis));
+
+    return _Templates.baseClass(content);
   }
 }
 
-class AnimatedEmojiDataGenerator {
-  final List<AnimatedEmoji> emojis;
+class _Templates {
+  static String baseClass(List<String> content) {
+    return '''
+// Generated code. Do not modify. Generated at ${DateTime.now()}.
 
-  AnimatedEmojiDataGenerator(this.emojis);
+/// Identifiers for the supported [Noto Animated Emojis](https://googlefonts.github.io/noto-emoji-animation/).
+///
+/// Use with the [AnimatedEmoji] class to show specific emojis.
+/// Emojis are identified by their name as listed below,
+/// e.g. [AnimatedEmojis.smile].
+///
+/// Some of the emojis have skin tone variations.
+///
+/// Example usage:
+/// ```dart
+/// // An animated thumbs up emoji 👍.
+/// AnimatedEmoji(AnimatedEmojis.thumbsUp)
+/// // Go get a skin tone variation 👍🏿.
+/// AnimatedEmoji(AnimatedEmojis.thumbsUp.dark)
+/// ```
+class AnimatedEmojis {
+  AnimatedEmojis._();
 
-  static const String _utilityFunctions = '''
+  ${content.join("\n\n")}
+
   /// Returns the name of the emoji from the [id] in camel case.
   ///
   /// For example: `1f603` => smileWithBigEyes
@@ -113,111 +142,61 @@ class AnimatedEmojiDataGenerator {
   static AnimatedEmojiData? fromEmojiString(String emoji) {
     return AnimatedEmojiDataUtil.fromEmojiString(emoji);
   }
-''';
-
-  String _emojiData(AnimatedEmoji emoji) {
-    return '''
-  ///<picture>
-  ///  <source srcset="https://fonts.gstatic.com/s/e/notoemoji/latest/${emoji.codepoint}/512.webp" type="image/webp">
-  ///  <img src="https://fonts.gstatic.com/s/e/notoemoji/latest/${emoji.codepoint}/512.gif" alt="${emoji.commonName}" width="32" height="32">
-  ///</picture>
-  ///
-  /// Animated emoji of ${emoji.commonName}.
-  static const ${emoji.commonName} = AnimatedEmojiData('${emoji.codepoint}',name: '${emoji.commonName}');
-
-''';
-  }
-
-  String _tonedEmojiData(AnimatedEmoji emoji) {
-    return '''
-  ///<picture>
-  ///  <source srcset="https://fonts.gstatic.com/s/e/notoemoji/latest/${emoji.codepoint}/512.webp" type="image/webp">
-  ///  <img src="https://fonts.gstatic.com/s/e/notoemoji/latest/${emoji.codepoint}/512.gif" alt="${emoji.commonName}" width="32" height="32">
-  ///</picture>
-  ///
-  /// Animated emoji of ${emoji.commonName}.
-  static const ${emoji.commonName} = AnimatedTonedEmojiData('${emoji.codepoint}',name: '${emoji.commonName}');
-
-''';
-  }
-
-  String _baseClass(String content) {
-    return '''
-/// Identifiers for the supported [Noto Animated Emojis](https://googlefonts.github.io/noto-emoji-animation/).
-///
-/// Use with the [AnimatedEmoji] class to show specific emojis.
-/// Emojis are identified by their name as listed below,
-/// e.g. [AnimatedEmojis.smile].
-///
-/// Some of the emojis have skin tone variations.
-///
-/// Example usage:
-/// ```dart
-/// // An animated thumbs up emoji 👍.
-/// AnimatedEmoji(AnimatedEmojis.thumbsUp)
-/// // Go get a skin tone variation 👍🏿.
-/// AnimatedEmoji(AnimatedEmojis.thumbsUp.dark)
-/// ```
-class AnimatedEmojis {
-  AnimatedEmojis._();
-
-$content
 }
 ''';
   }
 
-  String _emojiVariables() {
-    final buffer = StringBuffer();
+  static String generateMetadata(AnimatedEmojiData emoji) {
+    final categories = emoji.categories.map((e) => "'$e'").join(', ');
+    final tags = emoji.tags.map((e) => "'$e'").join(', ');
+    return 'categories: [$categories], tags: [$tags]';
+  }
 
-    final Set<String> addedVariations = {};
+  static String generateRegularEmoji(AnimatedEmojiData emoji) {
+    return '''
+  ///<picture>
+  ///  <source srcset="https://fonts.gstatic.com/s/e/notoemoji/latest/${emoji.id}/512.webp" type="image/webp">
+  ///  <img src="https://fonts.gstatic.com/s/e/notoemoji/latest/${emoji.id}/512.gif" alt="${emoji.name}" width="32" height="32">
+  ///</picture>
+  ///
+  /// Animated emoji of ${emoji.name}.
+  static const ${emoji.name} = AnimatedEmojiData('${emoji.id}', name: '${emoji.name}', ${generateMetadata(emoji)});
+  ''';
+  }
 
-    for (final emoji in emojis) {
-      if (addedVariations.contains(emoji.commonName)) continue;
+  static String generateTonedEmoji(AnimatedTonedEmojiData emoji) {
+    return '''
+  ///<picture>
+  ///  <source srcset="https://fonts.gstatic.com/s/e/notoemoji/latest/${emoji.id}/512.webp" type="image/webp">
+  ///  <img src="https://fonts.gstatic.com/s/e/notoemoji/latest/${emoji.id}/512.gif" alt="${emoji.name}" width="32" height="32">
+  ///</picture>
+  ///
+  /// Animated emoji of ${emoji.name}.
+  /// 
+  /// This emoji has skin tone variations.
+  /// 
+  /// See also:
+  /// - [AnimatedTonedEmojiData] for an example on how to use skin tone variations.
+  static const ${emoji.name} = AnimatedTonedEmojiData('${emoji.baseId}', name: '${emoji.name}', ${generateMetadata(emoji)});
+  ''';
+  }
 
-      final variations = emojis
-          .where((element) => element.commonName == emoji.commonName)
-          .toList();
+  static String generateValues(List<AnimatedEmojiData> dat) {
+    final values = <String>[];
 
-      // No variations of this emoji exist.
-      if (variations.length == 1) {
-        buffer.writeln(_emojiData(emoji));
+    for (final emoji in dat) {
+      if (emoji is AnimatedTonedEmojiData) {
+        values.add(emoji.name);
       } else {
-        addedVariations.add(emoji.commonName);
-        buffer.writeln(_tonedEmojiData(emoji));
+        values.add(emoji.name);
       }
     }
 
-    return buffer.toString();
-  }
-
-  String _emojiList() {
-    final buffer = StringBuffer();
-
-    final Set<String> addedVariations = {};
-
-    for (final emoji in emojis) {
-      if (addedVariations.contains(emoji.commonName)) continue;
-
-      addedVariations.add(emoji.commonName);
-      buffer.writeln('${emoji.commonName},');
-    }
-
     return '''
-/// All available values.
-/// 
-/// Does not contain all skin tone variations separately.
-static const values = [${buffer.toString()}];''';
-  }
-
-  String generate({bool format = true}) {
-    final emojiVariables = _emojiVariables();
-    final values = _emojiList();
-    final content =
-        _baseClass('$emojiVariables \n $values \n $_utilityFunctions');
-
-    // Formatting the file is performance heavy.
-    if (format) return DartFormatter().format(content);
-
-    return content;
+  /// List of all supported [AnimatedEmoji]s.
+  static const List<AnimatedEmojiData> values = [
+    ${values.join(',\n    ')}
+  ];
+''';
   }
 }
